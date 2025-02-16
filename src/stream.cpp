@@ -75,6 +75,12 @@ int32_t SteamAudioStreamPlayback::_mix(AudioFrame *buffer, float rate_scale, int
 		ls->bufs.in.data[1][i] = mixed_frames[i].y;
 	}
 
+	if (ls->cfg.is_air_absorp_on) {
+		ls->direct_outputs.flags = static_cast<IPLDirectEffectFlags>(
+				ls->direct_outputs.flags |
+				IPL_DIRECTEFFECTFLAGS_APPLYAIRABSORPTION);
+	}
+
 	if (ls->cfg.is_dist_attn_on) {
 		ls->direct_outputs.flags = static_cast<IPLDirectEffectFlags>(
 				ls->direct_outputs.flags |

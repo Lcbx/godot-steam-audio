@@ -5,6 +5,7 @@
 #include "godot_cpp/core/memory.hpp"
 #include "godot_cpp/variant/callable_method_pointer.hpp"
 #include "phonon.h"
+#include "player.hpp"
 #include "server_init.hpp"
 #include "steam_audio.hpp"
 #include <algorithm>
@@ -48,6 +49,12 @@ void SteamAudioServer::tick() {
 		attn_model.type = IPL_DISTANCEATTENUATIONTYPE_INVERSEDISTANCE;
 		attn_model.minDistance = ls->cfg.min_attn_dist;
 
+		IPLAirAbsorptionModel absorp_model{};
+		absorp_model.type = ls->cfg.air_absorption_model_type;
+		absorp_model.coefficients[0] = ls->cfg.air_absorption_low;
+		absorp_model.coefficients[1] = ls->cfg.air_absorption_mid;
+		absorp_model.coefficients[2] = ls->cfg.air_absorption_high;
+
 		IPLCoordinateSpace3 src_coords;
 		src_coords.ahead = IPLVector3{};
 		src_coords.up = IPLVector3{};
@@ -56,16 +63,31 @@ void SteamAudioServer::tick() {
 
 		IPLSimulationInputs inputs{};
 		inputs.flags = IPL_SIMULATIONFLAGS_DIRECT;
-		inputs.directFlags = static_cast<IPLDirectSimulationFlags>(
-				IPL_DIRECTSIMULATIONFLAGS_DISTANCEATTENUATION |
-				IPL_DIRECTSIMULATIONFLAGS_OCCLUSION |
-				IPL_DIRECTSIMULATIONFLAGS_TRANSMISSION);
 		inputs.distanceAttenuationModel = attn_model;
+		inputs.airAbsorptionModel = absorp_model;
 		inputs.source = src_coords;
 		inputs.occlusionType = IPL_OCCLUSIONTYPE_VOLUMETRIC;
 		inputs.occlusionRadius = ls->cfg.occ_radius;
 		inputs.numOcclusionSamples = ls->cfg.occ_samples;
 		inputs.numTransmissionRays = ls->cfg.transm_rays;
+
+		if (ls->cfg.is_air_absorp_on) {
+			inputs.directFlags = static_cast<IPLDirectSimulationFlags>(
+					inputs.directFlags |
+					IPL_DIRECTSIMULATIONFLAGS_AIRABSORPTION);
+		}
+
+		if (ls->cfg.is_dist_attn_on) {
+			inputs.directFlags = static_cast<IPLDirectSimulationFlags>(
+					inputs.directFlags |
+					IPL_DIRECTSIMULATIONFLAGS_DISTANCEATTENUATION);
+		}
+		if (ls->cfg.is_occlusion_on) {
+			inputs.directFlags = static_cast<IPLDirectSimulationFlags>(
+					inputs.directFlags |
+					IPL_DIRECTSIMULATIONFLAGS_OCCLUSION |
+					IPL_DIRECTSIMULATIONFLAGS_TRANSMISSION);
+		}
 
 		SteamAudio::log(SteamAudio::log_debug, "tick: setting inputs");
 		iplSourceSetInputs(ls->src.src, IPL_SIMULATIONFLAGS_DIRECT, &inputs);
@@ -128,6 +150,11 @@ void SteamAudioServer::tick() {
 			continue;
 		}
 		if (ls->src.player->get_global_position().distance_to(listener->get_global_position()) > ls->cfg.max_refl_dist) {
+			continue;
+		}
+
+		auto player = dynamic_cast<SteamAudioPlayer *>(ls->src.player);
+		if (player == nullptr || !player->is_reflection_on()) {
 			continue;
 		}
 
